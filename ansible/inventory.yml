@@ -2,7 +2,8 @@ all:
   hosts:                                                   # Mendefinisikan bahwa ini host
     server1:                                               # Nama dari host
       ansible_connection: ssh                              # protocol yang digunakan
-      ansible_host: "103.134.154.147"                      # Alamat Host
+      ansible_host: "103.187.146.7"                        # Alamat Host
       ansible_port: 22                                     # Port SSH
       ansible_user: "polindra"                             # Username Host
-      ansible_private_key_file: "/Users/ahmadrifai/.ssh/id_rsa"
+      ansible_password: "Polindra123"
+      ansible_private_key_file: "C:/Users/ASUS/.ssh/id_rsa" # Private Key
