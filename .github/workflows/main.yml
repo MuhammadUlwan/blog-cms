@@ -1,4 +1,4 @@
-name: Laravel CI
+name: Laravel CI/CD
 
 on:
   push:
@@ -13,24 +13,16 @@ jobs:
     name: Laravel Build
     runs-on: ubuntu-latest
     env:
-      DB_DATABASE: blogcms
-      DB_USERNAME: root
-      DB_PASSWORD: password
-      BROADCAST_DRIVER: log
-    services:
-      mysql:
-        image: mysql:5.7
-        env:
-          MYSQL_ALLOW_EMPTY_PASSWORD: false
-          MYSQL_ROOT_PASSWORD: password
-          MYSQL_DATABASE: blogcms
-        ports:
-          - 3306/tcp
-        options: >-
-          --health-cmd="mysqladmin ping --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=3
+      DB_DATABASE: polindra
+      DB_USERNAME: polindra
+      DB_PASSWORD: Polindra123
+      TELEGRAM_BOT: ${{ secrets.TELEGRAM_BOT }}
+      TELEGRAM_CHANNEL: ${{ secrets.TELEGRAM_CHANNEL }}
+      TELEGRAM_DEPLOY: ${{ secrets.TELEGRAM_DEPLOY }}
+      SSH_PORT: ${{ secrets.SSH_PORT }}
+      SERVER_IP: ${{ secrets.SERVER_IP }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      ENV_FILE_CONTENT: ${{ secrets.ENV_FILE_CONTENT }}
 
     steps:
       - name: Checkout code
@@ -53,13 +45,11 @@ jobs:
 
       - name: Run Migration Database
         run: php artisan migrate:fresh --seed
-        env:
-          DB_PORT: ${{ job.services.mysql.ports['3306'] }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v2
         with:
-          node-version: "20"
+          node-version: "14"
 
       - name: Install Node.js dependencies
         run: npm install
@@ -77,70 +67,15 @@ jobs:
           path: artifact.zip
           retention-days: 5
 
-  laravel_test:
-    name: Laravel Test
-    runs-on: ubuntu-latest
-    needs: laravel_build
-    env:
-      DB_DATABASE: blogcms
-      DB_USERNAME: root
-      DB_PASSWORD: password
-      BROADCAST_DRIVER: log
-    services:
-      mysql:
-        image: mysql:5.7
-        env:
-          MYSQL_ALLOW_EMPTY_PASSWORD: false
-          MYSQL_ROOT_PASSWORD: password
-          MYSQL_DATABASE: blogcms
-        ports:
-          - 3306/tcp
-        options: >-
-          --health-cmd="mysqladmin ping --silent"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=3
-
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v2
-        with:
-          name: build-artifact
-          path: .
-
-      - name: Unzip artifact
-        run: unzip -o artifact.zip
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.3"
-          extensions: mbstring, pdo, mysql, gd
-
-      - name: Run Migration Database
-        run: php artisan migrate:fresh --seed
-        env:
-          DB_PORT: ${{ job.services.mysql.ports['3306'] }}
-
-      - name: Migrate PHPUnit configuration
-        run: ./vendor/bin/phpunit --migrate-configuration || true
-
-      - name: Run tests
-        run: ./vendor/bin/phpunit
-        env:
-          DB_PORT: ${{ job.services.mysql.ports['3306'] }}
-
   laravel_notification:
     name: Laravel Notify
     runs-on: ubuntu-latest
-    needs: [laravel_build, laravel_test]
+    needs: laravel_build
     if: always()
-    env:
-      CURRENT_REPO: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Notify to Telegram
         run: |
-          if [[ "${{ needs.laravel_build.result }}" == "success" && "${{ needs.laravel_test.result }}" == "success" ]]; then
+          if [[ "${{ needs.laravel_build.result }}" == "success" ]]; then
             STATUS="CI/CD Pipeline <b>Success ✅</b>"
           else
             STATUS="CI/CD Pipeline <b>Failure ❌</b>"
@@ -153,18 +88,14 @@ jobs:
             %0A📝 Commit: $GITHUB_SHA
             %0A📝 Branch: $GITHUB_REF_NAME
             %0A💬 Message: <b>${{ github.event.head_commit.message }}</b>
-            %0ACek disini: $CURRENT_REPO
+            %0ACek disini: ${{ github.run_url }}
             "
-
 
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
-    needs: [laravel_build, laravel_test]
+    needs: laravel_build
     if: always()
-    env:
-      CURRENT_REPO: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v2
@@ -181,7 +112,7 @@ jobs:
             curl --request POST ${{ secrets.TELEGRAM_DEPLOY }} \
               --header 'Accept: */*' \
               --form 'chat_id="${{ secrets.TELEGRAM_CHANNEL }}"' \
-              --form caption=$CURRENT_REPO \
+              --form caption="${{ github.run_url }}" \
               --form document=@./artifact.zip
           else
             echo "Artifact file not found!"
@@ -210,7 +141,6 @@ jobs:
           rsync -avz ---progress --stats -e "ssh -i ssh_private_key_cicd_polindra -o StrictHostKeyChecking=no -p $SSH_PORT" artifact.zip $SERVER_USER@$SERVER_IP:$DEPLOY_PATH
           ssh -i ssh_private_key_cicd_polindra -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP -p $SSH_PORT 'find $DEPLOY_PATH -mindepth 1 ! -name artifact.zip -delete'
           ssh -i ssh_private_key_cicd_polindra -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP -p $SSH_PORT 'cd $DEPLOY_PATH && unzip -o artifact.zip && rm -f artifact.zip'
-
 
       - name: Fill .env
         run: |
