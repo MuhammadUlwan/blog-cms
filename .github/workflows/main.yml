@@ -13,7 +13,7 @@ jobs:
     name: Laravel Build
     runs-on: ubuntu-latest
     env:
-      DB_DATABASE: polindramisk
+      DB_DATABASE: polindra
       DB_USERNAME: root
       DB_PASSWORD: Polindra123
       TELEGRAM_BOT: ${{ secrets.TELEGRAM_BOT }}
